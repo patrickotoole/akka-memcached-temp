@@ -19,9 +19,6 @@ import scala.collection.JavaConversions._
  */
 object Serialization {
 
-    /**
-     * Import this serializer to use JBoss serialization with Memcached
-     */
     implicit def JBoss[T <: Any] = new Serializer[T] {
 
         /**
@@ -70,6 +67,44 @@ object Serialization {
             }
             obj.asInstanceOf[T]
         }
+    }
+
+    implicit def RBoss[T <: Any] = new Serializer[T] {
+
+        /**
+         * Uses a connection or stream to compute a result, and closes
+         * the connection once the result is computed
+         */
+        def using[C <: Closeable, V](closeables: C*)(f: () => V): V = {
+            try {
+                f.apply
+            } finally {
+                for (closeable <- closeables) { safely { closeable.close() } }
+            }
+        }
+
+        /**
+         * Swallows any exception
+         */
+        def safely(f: => Any) {
+            try { f } catch { case error => {} }
+        }
+
+        def serialize(o: T): ByteString = {
+            val str = o.toString
+            val byteArray: Array[Byte] = str.toCharArray.map(_.toByte)
+            ByteString(byteArray)
+        }
+
+        def deserialize(in: Array[Byte]): T = {
+            val bis = new ByteArrayInputStream(in)
+            val is = new JBossObjectInputStream(bis)
+            val obj = using(bis, is) {
+                is readObject
+            }
+            obj.asInstanceOf[T]
+        }
+
     }
 }
 
